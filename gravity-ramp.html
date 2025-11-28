@@ -64,10 +64,44 @@
             [RAMP_TYPES.CYCLOID]: { label: 'Brachistochrone', color: '#22c55e' }, // Green
         };
 
+        // --- MATH UTILS FOR CYCLOID ---
+        // We need to find theta_max such that (theta - sin(theta)) / (1 - cos(theta)) = W / H
+        // We solve this numerically using Newton-Raphson
+        const solveCycloidTheta = (width, height) => {
+            const targetRatio = width / height;
+            let theta = Math.PI; // Initial guess
+            
+            for (let i = 0; i < 10; i++) {
+                const numerator = theta - Math.sin(theta);
+                const denominator = 1 - Math.cos(theta);
+                const f = (numerator / denominator) - targetRatio;
+                
+                // Derivative roughly approximation or separate terms
+                // It's cleaner to just do simple iterations or binary search if needed, 
+                // but Newton is fast.
+                // d/dtheta [ (theta - sin theta) / (1 - cos theta) ]
+                // = [ (1 - cos)(1 - cos) - (theta - sin)(sin) ] / (1 - cos)^2
+                const fPrime = ((denominator * denominator) - (numerator * Math.sin(theta))) / (denominator * denominator);
+                
+                if (Math.abs(f) < 0.0001) break;
+                theta = theta - f / fPrime;
+            }
+            return theta;
+        };
+
         // --- Curve Generation Functions ---
         const generatePoints = (type, width, height, segments = 400) => {
             const points = [];
             
+            // Pre-calculate Cycloid Parameters if needed
+            let cycloidR = 0;
+            let cycloidThetaMax = 0;
+            if (type === RAMP_TYPES.CYCLOID) {
+                cycloidThetaMax = solveCycloidTheta(width, height);
+                // y_max = height = R(1 - cos(theta_max))
+                cycloidR = height / (1 - Math.cos(cycloidThetaMax));
+            }
+
             for (let i = 0; i <= segments; i++) {
                 const t = i / segments; 
                 let x = 0;
@@ -82,7 +116,6 @@
                 case RAMP_TYPES.CONVEX:
                     // Adjusted Convex
                     x = t * width;
-                    // Ensure term inside sqrt is non-negative
                     const term = Math.max(0, 1 - Math.pow(t, 2));
                     const circlePart = Math.sqrt(term);
                     y = height * circlePart; 
@@ -94,8 +127,14 @@
                     break;
 
                 case RAMP_TYPES.CYCLOID:
-                    x = t * width;
-                    y = height * Math.pow(1 - t, 1.8); 
+                    // True Parametric Cycloid
+                    // Inverted: Start at (0, Height), go down.
+                    // Standard cycloid: x = R(th - sin th), Y_drop = R(1 - cos th)
+                    // Our Y = Height - Y_drop
+                    const theta = t * cycloidThetaMax;
+                    x = cycloidR * (theta - Math.sin(theta));
+                    const yDrop = cycloidR * (1 - Math.cos(theta));
+                    y = height - yDrop;
                     break;
                     
                 default:
